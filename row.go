@@ -27,8 +27,8 @@ func (row Row) EncodeKey(schema *Schema) (key []byte) {
 	key = append(key, 0x00)
 	check(len(row) == len(schema.Cols))
 	for idx, value := range row {
-		check(value.Type == schema.Cols[idx].Type)
 		if slices.Contains(schema.PKey, idx) {
+			check(value.Type == schema.Cols[idx].Type)
 			key = row[idx].Encode(key)
 		}
 	}
