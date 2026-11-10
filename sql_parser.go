@@ -1,6 +1,10 @@
 package dbonthego
 
-import "strings"
+import (
+	"errors"
+	"strconv"
+	"strings"
+)
 
 type Parser struct {
 	buf string
@@ -61,11 +65,69 @@ func (p *Parser) tryName() (string, bool) {
 	}
 
 	curr++
-	for curr < len(p.buf) && isNameContinue(p.buf[curr]){
+	for curr < len(p.buf) && isNameContinue(p.buf[curr]) {
 		curr++
 	}
 	p.pos = curr
-	return p.buf[start:p.pos], true	
+	return p.buf[start:curr], true
+}
+
+func (p *Parser) parseValue(out *Cell) error {
+	p.skipSpaces()
+	if p.pos >= len(p.buf) {
+		return errors.New("expect value")
+	}
+	ch := p.buf[p.pos]
+	if ch == '"' || ch == '\'' {
+		return p.parseString(out)
+	} else if isDigit(ch) || ch == '-' || ch == '+' {
+		return p.parseInt(out)
+	} else {
+		return errors.New("expect value")
+	}
+}
+
+func (p *Parser) parseString(out *Cell) error {
+	quote := p.buf[p.pos]
+	curr := p.pos + 1
+	for curr < len(p.buf) {
+		ch := p.buf[curr]
+		switch ch {
+		case '\\':
+			curr++
+			if curr < len(p.buf) && (p.buf[curr] == '\'' || p.buf[curr] == '"') {
+				out.Str = append(out.Str, p.buf[curr])
+				curr++
+			} else {
+				return errors.New("bad escape")
+			}
+		case quote:
+			out.Type = TypeStr
+			p.pos = curr + 1
+			return nil
+		default:
+			out.Str = append(out.Str, p.buf[curr])
+			curr++
+		}
+	}
+	return errors.New("string is not terminated")
+}
+
+func (p *Parser) parseInt(out *Cell) (err error) {
+	start, curr := p.pos, p.pos
+	if p.buf[curr] == '-' || p.buf[curr] == '+' {
+		curr++
+	}
+
+	for curr < len(p.buf) && isDigit(p.buf[curr]) {
+		curr ++
+	}
+
+	if out.I64, err = strconv.ParseInt(p.buf[start:curr], 10, 64); err != nil {
+		return err
+	}
+	out.Type = TypeI64
+	return nil
 }
 
 func (p *Parser) isEnd() bool {
