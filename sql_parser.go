@@ -15,6 +15,17 @@ func NewParser(s string) Parser {
 	return Parser{buf: s, pos: 0}
 }
 
+type StmtSelect struct {
+	table string
+	cols  []string
+	keys  []NamedCell
+}
+
+type NamedCell struct {
+	column string
+	value  Cell
+}
+
 func isSpace(ch byte) bool {
 	switch ch {
 	case '\t', '\n', '\v', '\f', '\r', ' ':
@@ -54,6 +65,15 @@ func (p *Parser) tryKeyword(kw string) bool {
 		return false
 	} 
 	p.pos += len(kw)
+	return true
+}
+
+func (p *Parser) tryPunctuation(tok string) bool {
+	p.skipSpaces()
+	if !(p.pos+len(tok) <= len(p.buf) && p.buf[p.pos:p.pos+len(tok)] == tok) {
+		return false
+	}
+	p.pos += len(tok)
 	return true
 }
 
@@ -127,7 +147,64 @@ func (p *Parser) parseInt(out *Cell) (err error) {
 		return err
 	}
 	out.Type = TypeI64
+	p.pos = curr
 	return nil
+}
+
+func (p *Parser) parseEqual(out *NamedCell) error {
+    var ok bool
+    out.column, ok = p.tryName()
+    if !ok {
+        return errors.New("expect column")
+    }
+    if !p.tryPunctuation("=") {
+        return errors.New("expect =")
+    }
+    return p.parseValue(&out.value)
+}
+
+func (p *Parser) parseSelect(out *StmtSelect) error {
+    if !p.tryKeyword("SELECT") {
+        return errors.New("expect keyword")
+    }
+    for !p.tryKeyword("FROM") {
+        if len(out.cols) > 0 && !p.tryPunctuation(",") {
+            return errors.New("expect comma")
+        }
+        if name, ok := p.tryName(); ok {
+            out.cols = append(out.cols, name)
+        } else {
+            return errors.New("expect column")
+        }
+    }
+    if len(out.cols) == 0 {
+        return errors.New("expect column list")
+    }
+    var ok bool
+    if out.table, ok = p.tryName(); !ok {
+        return errors.New("expect table name")
+    }
+    return p.parseWhere(&out.keys)
+}
+
+func (p *Parser) parseWhere(out *[]NamedCell) error {
+	if !p.tryKeyword("WHERE") {
+        return errors.New("expect keyword")
+    }
+    for !p.tryPunctuation(";") {
+		expr := NamedCell{}
+        if len(*out) > 0 && !p.tryKeyword("AND") {
+            return errors.New("expect AND")
+        }
+        if err := p.parseEqual(&expr); err != nil {
+			return err
+		}
+		*out = append(*out, expr)
+    }
+    if len(*out) == 0 {
+        return errors.New("expect where clause")
+    }
+    return nil
 }
 
 func (p *Parser) isEnd() bool {
